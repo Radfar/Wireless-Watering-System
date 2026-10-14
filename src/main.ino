@@ -56,7 +56,7 @@ void WireProtectionAction(void)
 //  delay(100);
 //  mySerial.println("AT+CMGF=1"); // text mode sms
 //  updateSerial();
-//  mySerial.println("AT+CMGS=\"+989123765079\"");//09122119961
+//  mySerial.println("AT+CMGS=\"+phone number\"");
 //  updateSerial();
 //  mySerial.println("!!! DANGER !!! "); // sms text
 //  updateSerial();
@@ -119,7 +119,7 @@ void SendSMS1()
   //sim800l.print("AT+CSMP=17,167,2,25\r");delay(100);
   sim800l.print("AT+CMGF=1\r");                   //Set the module to SMS mode
   delay(100);
-  sim800l.print("AT+CMGS=\"+989123765079\"\r");  //Your phone number don't forget to include your country code, example +212123456789"
+  sim800l.print("AT+CMGS=\"+phonenumberhere\"\r");  //Your phone number don't forget to include your country code, example +xxxxx"
   delay(500);
   sim800l.print("SYSTEM READY TO USE!");       //This is the text to send to the phone number, don't make it too long or you have to modify the SoftwareSerial buffer
   delay(500);
