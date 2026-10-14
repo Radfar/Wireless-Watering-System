@@ -1,331 +1,82 @@
 # Wireless Watering System
 
-A wireless irrigation and watering control system built around an **Arduino Mega 2560 main controller** and distributed **ESP8266-based valve controllers**.
+An offline-first wireless irrigation controller. The current controller firmware is an Arduino UNO sketch in [`src/main.ino`](src/main.ino), which sends 433 MHz RF commands to ESP8266-based remote valve nodes. Each node drives a 6 V DC bi-stable (latching) valve through an appropriate driver circuit.
 
-The system was originally developed for garden and irrigation applications where running control wiring between valves is difficult. Valve commands are transmitted wirelessly, while the main controller manages watering schedules, the pump, system status, and cellular SMS communication.
+> **Current scope:** local watering control and RF valve operation. MQTT, soil-moisture telemetry, Internet access, and cloud integration are later development stages and are not required for the current watering sequence.
 
-> **Project status:** Existing wireless irrigation controller. IoT/cloud connectivity is currently under development.
-
----
-
-## System Architecture
+## Current architecture
 
 ```text
-                         ┌──────────────────────┐
-                         │      Web / Cloud      │
-                         │   IoT Application     │
-                         └──────────┬───────────┘
-                                    │
-                              MQTT / HTTPS
-                                    │
-                           Future IoT Gateway
-                                    │
-                                    │
-                         ┌──────────▼──────────┐
-                         │   Arduino Mega 2560 │
-                         │    Main Controller   │
-                         │                      │
-                         │ • Watering schedules │
-                         │ • Valve management   │
-                         │ • Pump control       │
-                         │ • Sensors            │
-                         │ • SMS communication  │
-                         │ • RF communication   │
-                         └──────────┬───────────┘
-                                    │
-                               RF Wireless
-                                    │
-               ┌────────────────────┼────────────────────┐
-               │                    │                    │
-        ┌──────▼──────┐      ┌──────▼──────┐      ┌──────▼──────┐
-        │ Valve Node  │      │ Valve Node  │      │ Valve Node  │
-        │  ESP8266    │      │  ESP8266    │      │  ESP8266    │
-        └──────┬──────┘      └──────┬──────┘      └──────┬──────┘
-               │                    │                    │
-          Solenoid Valve       Solenoid Valve       Solenoid Valve
+Arduino UNO controller
+  - local interface and EEPROM settings
+  - RF transmitter / pump output / SIM800 interface
+                 |
+           433 MHz RF
+                 |
+         ESP8266 WEMOS D1
+                 |
+           valve driver
+                 |
+        6 V DC bi-stable valve
 ```
 
-The system can be expanded to a large number of wireless valve nodes. RF repeaters can be used where the physical distance between the main controller and valve nodes exceeds the reliable communication range.
+The controller sketch currently defines four valve IDs (0–3). Actual deployment count and RF coverage must be validated against the physical installation. RF repeaters are not confirmed as implemented in the current controller sketch.
 
----
+## Controller details from the current source
 
-## Main Controller
+| Item | Current value |
+|---|---|
+| Main controller | Arduino UNO |
+| RF library | RCSwitch |
+| RF transmitter signal | Digital pin 12 |
+| Pump/main-valve relay output | Digital pin 13 |
+| SIM800 interface | SoftwareSerial RX 10, TX 11 |
+| LCD | 16 × 2 LiquidCrystal |
+| Button ladder | Analog input A0 |
+| Settings | EEPROM |
+| Valve IDs | 0–3 (`VALVE = 4`) |
+| Open / ON code | `2560 + valve_id` |
+| Close / OFF code | `1280 + valve_id` |
+| RF command width | 24 bits; each command sent twice |
+| Watering delay constant | `WATERING_DURATION = 2000` ms |
 
-The main controller is based on an **Arduino Mega 2560**.
+**Commissioning note:** the source comment says the watering delay is one minute, but the configured value is 2,000 ms (2 seconds). Confirm the intended duration before live irrigation deployment.
 
-Its responsibilities include:
+## Valve node
 
-* Managing watering schedules
-* Controlling multiple wireless valves
-* Controlling the main pump/relay
-* Storing configuration in EEPROM
-* Providing a local LCD user interface
-* RF wireless communication
-* Monitoring system conditions
-* Sending SMS notifications through a SIM800 module
-* Executing irrigation locally without requiring an Internet connection
+The ESP8266 valve firmware is maintained in the [Wireless Valve Node repository](https://github.com/Radfar/wireless-valve-node). The current node source listens for the assigned RF command and generates a short directional pulse through an external driver. Verify driver topology, coil current, pulse polarity, and pulse duration against the valve and driver specifications.
 
-The controller is designed so that the core irrigation process can continue operating independently of any future cloud or Internet connection.
+## RF command mapping
 
----
+| Action | Decimal code for valve ID `n` |
+|---|---:|
+| Open / ON | `2560 + n` |
+| Close / OFF | `1280 + n` |
 
-## Wireless Valve Controllers
+This fixed-code protocol does not provide acknowledgement, encryption, sender authentication, or proof that a valve physically moved.
 
-Each remote valve controller is based on an **ESP8266**.
+## Future development — separate from current control
 
-A valve node is responsible for controlling its local irrigation valve and communicating with the main controller through the wireless network.
+- ESP8266/ESP32 IoT gateway
+- MQTT telemetry and remote commands
+- Soil-moisture monitoring
+- Web dashboard and cloud integration
 
-The distributed architecture avoids the need to install long control cables throughout a garden or irrigation area.
+Keep the MQTT soil-moisture experiment separate from the active RF valve firmware. The local watering system should not depend on Internet availability.
 
-```text
-Main Controller
-       │
-       │ RF
-       ▼
-   Valve Node
-   ESP8266
-       │
-       ▼
- Solenoid Valve
-```
+## Safety and commissioning
 
-The number of deployed valve nodes can be increased according to the requirements of the irrigation installation.
+- Do not connect a valve coil directly to an ESP8266 GPIO; use a driver rated for the valve's pulse current and inductive load.
+- Verify valve voltage, polarity, and maximum pulse duration from the manufacturer's datasheet.
+- Confirm pump relay ratings and appropriate electrical isolation/protection.
+- Do not rely on commented-out protection code as an active safety function.
+- Test RF reception and physical valve movement separately; a transmitted code is not proof of movement.
 
----
+## Development status
 
-## RF Communication and Repeaters
-
-The current system uses RF communication between the Arduino Mega 2560 and the remote valve controllers.
-
-For installations where direct communication is not reliable because of distance, physical obstacles, or the layout of the garden, **RF repeaters** can be deployed to extend the communication range.
-
-```text
-Main Controller
-       │
-       │ RF
-       ▼
-    Repeater
-       │
-       │ RF
-       ▼
-  Remote Valve
-```
-
-The RF network is currently the primary wireless control mechanism for the irrigation system.
-
----
-
-## SIM800 Cellular Communication
-
-The main controller includes a **SIM800 GSM module**.
-
-The cellular interface provides SMS-based communication and can be used for system notifications and remote communication where appropriate.
-
-The cellular communication is independent from the local RF valve network.
-
-This provides an additional communication path for installations where Internet connectivity is unavailable.
-
----
-
-## Local Operation
-
-One of the main design principles of the system is **local control**.
-
-The irrigation controller does not depend on a cloud server for basic watering operation.
-
-```text
-Internet unavailable
-        │
-        ▼
-Arduino continues operating
-        │
-        ├── Watering schedules
-        ├── Valve control
-        ├── Pump control
-        └── Local protection
-```
-
-Future Internet connectivity will be added as a supervisory and remote-control layer rather than making the cloud responsible for the basic real-time irrigation process.
-
----
-
-## Planned IoT Architecture
-
-The next development stage is to connect the existing controller to a web-based IoT application.
-
-The planned architecture is:
-
-```text
-                     Internet / Cloud
-                            │
-                       MQTT / HTTPS
-                            │
-                  ┌─────────▼─────────┐
-                  │    IoT Gateway    │
-                  │   ESP8266/ESP32   │
-                  └─────────┬─────────┘
-                            │ UART
-                  ┌─────────▼─────────┐
-                  │   Arduino Mega    │
-                  │   Main Controller │
-                  └─────────┬─────────┘
-                            │
-                           RF
-                            │
-                  Wireless Valve Network
-```
-
-The gateway will provide network connectivity while the Arduino Mega continues to handle the local irrigation logic.
-
-This separation is intentional:
-
-* **Arduino Mega:** real-time control and local automation
-* **RF network:** wireless valve communication
-* **ESP8266/ESP32 gateway:** Internet connectivity
-* **MQTT:** IoT messaging
-* **Web application:** monitoring, visualization, configuration, and remote commands
-
----
-
-## Planned MQTT Communication
-
-MQTT is being considered as the primary communication protocol between the irrigation controller and the IoT platform.
-
-Example topics:
-
-```text
-site/{site_id}/status
-site/{site_id}/telemetry
-site/{site_id}/command
-site/{site_id}/events
-
-site/{site_id}/valves/{valve_id}/status
-```
-
-Example telemetry:
-
-```json
-{
-  "flow_lpm": 32.4,
-  "pressure_bar": 3.1,
-  "tank_percent": 74,
-  "active_valves": 3,
-  "pump": true
-}
-```
-
-Example remote command:
-
-```json
-{
-  "command": "valve_on",
-  "valve": 17,
-  "duration": 600
-}
-```
-
-The final communication protocol and data model are still under development.
-
----
-
-## Future Sensor Integration
-
-The architecture is intended to support additional irrigation measurements, including:
-
-* Water flow
-* Pipe pressure
-* Tank level
-* Pump status
-* Valve status
-* Battery status of remote nodes
-* Communication status
-* System alarms
-
-These measurements will eventually be available to the web application for monitoring and historical analysis.
-
----
-
-## Reliability and Safety
-
-Because the system controls physical irrigation equipment, network connectivity should not be required for basic safety functions.
-
-Future versions will focus on:
-
-* Local autonomous operation
-* Communication acknowledgements
-* Command retries
-* Valve communication timeout detection
-* Maximum valve operating time
-* Flow monitoring
-* Tank-level protection
-* Pump protection
-* Communication failure detection
-* Watchdog and automatic recovery
-* Remote firmware updates
-* Secure MQTT communication
-
-Critical protection logic should remain on the local controller rather than relying on the cloud.
-
----
-
-## Repository Structure
-
-The current repository contains the Arduino-based main controller firmware.
-
-```text
-Wireless-Watering-System/
-│
-├── README.md
-│
-└── WIS_UI_V7.0_RE.ino
-```
-
-Additional firmware and gateway components will be added as the IoT architecture evolves.
-
----
-
-## Current Development Status
-
-### Existing
-
-* [x] Arduino Mega-based main controller
-* [x] Wireless RF valve control
-* [x] ESP8266 valve controllers
-* [x] RF repeaters for extended range
-* [x] Local watering schedules
-* [x] EEPROM configuration storage
-* [x] LCD user interface
-* [x] Pump control
-* [x] SIM800 GSM/SMS communication
-
-### In Development
-
-* [ ] IoT gateway
-* [ ] Wi-Fi connectivity
-* [ ] MQTT communication
-* [ ] Cloud/backend integration
-* [ ] Real-time web monitoring
-* [ ] Remote valve control
-* [ ] Telemetry collection
-* [ ] Alarm and event management
-* [ ] Remote configuration
-* [ ] OTA firmware updates
-* [ ] Secure device authentication
-
----
-
-## Design Philosophy
-
-The system follows a **local-first IoT architecture**:
-
-> **The irrigation system should continue to operate even when the Internet is unavailable.**
-
-Internet connectivity is intended to provide remote monitoring, configuration, telemetry, and supervisory control without making the physical irrigation process dependent on the cloud.
-
-This approach allows the existing wireless irrigation system to evolve into a scalable IoT platform while preserving the reliability of the original local controller.
-
----
+This repository documents a prototype, not product certification or guaranteed field reliability. Record test results, hardware revisions, wiring diagrams, and known limitations before customer handover.
 
 ## License
 
-This project is currently under development. Licensing information will be added when the project reaches a stable release.
+No license has been specified. Add a license before redistributing or commercially reusing the source.
+
